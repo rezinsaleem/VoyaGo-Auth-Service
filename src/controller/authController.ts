@@ -14,17 +14,27 @@ interface RefreshTokenResponse {
 }
 
 export class Authcontroller {
-  isAuthenticated = async (call: { request: { token: string } }, callback: (error: any, result?: any) => void): Promise<void> => {
+  isAuthenticated = async (
+    call: { request: { token: string; requiredRole?: string } }, 
+    callback: (error: any, result?: any) => void
+  ): Promise<void> => {
     try {
-      console.log('Validating token');
+      console.log('Validating token...');
       const token = call.request.token;
+      const requiredRole = call.request.requiredRole || '';  
       const secret = process.env.ACCESS_TOKEN as Secret;
-
+  
       if (!secret) {
         throw new Error('ACCESS_TOKEN secret is not set in environment variables');
       }
-
+  
+      // Verify the token
       const decoded = jwt.verify(token, secret) as AuthTokenPayload;
+  
+      if (requiredRole && requiredRole !== decoded.role) {
+        return callback(null, { message: 'Access denied. Insufficient role.' });
+      }
+  
       callback(null, { userId: decoded.id, role: decoded.role });
     } catch (error) {
       if (error instanceof TokenExpiredError) {
@@ -39,7 +49,7 @@ export class Authcontroller {
       }
     }
   };
-
+  
   refreshToken = async (call: { request: { token: string } }, callback: (error: any, result?: RefreshTokenResponse) => void): Promise<void> => {
     try {
       console.log('Refreshing token');

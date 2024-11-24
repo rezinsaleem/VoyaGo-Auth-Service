@@ -18,9 +18,11 @@ message RefreshRes{
 
 message AuthReq {
   string token = 1;
+  string requiredRole = 2;
 }
 
 message AuthRes {
   string user_id = 1;
   string role = 2;
+  string message = 3;
 }
