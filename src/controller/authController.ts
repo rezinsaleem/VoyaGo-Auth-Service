@@ -4,7 +4,6 @@ import 'dotenv/config';
 interface AuthTokenPayload extends JwtPayload {
   id: string;
   role: string;
-  type: string;
 }
 
 interface RefreshTokenResponse {
@@ -15,77 +14,80 @@ interface RefreshTokenResponse {
 
 export class Authcontroller {
   isAuthenticated = async (
-    call: { request: { token: string; requiredRole?: string } }, 
+    call: { request: { token: string; requiredRole?: string } },
     callback: (error: any, result?: any) => void
   ): Promise<void> => {
     try {
       console.log('Validating token...');
+      console.log(call.request);
       const token = call.request.token;
-      const requiredRole = call.request.requiredRole || '';  
+      const requiredRole = call.request.requiredRole || '';
       const secret = process.env.ACCESS_TOKEN as Secret;
   
+      // Ensure token is provided
+      if (!token) {
+        return callback(null, { message: 'Token is required' });
+      }
+  
+      // Ensure the secret is set
       if (!secret) {
         throw new Error('ACCESS_TOKEN secret is not set in environment variables');
       }
   
+      const decodedToken = jwt.decode(token) as AuthTokenPayload | null;
+    console.log('Decoded token (before verification):', decodedToken);
       // Verify the token
       const decoded = jwt.verify(token, secret) as AuthTokenPayload;
   
+      console.log('Decoded token:', decoded);  // Log for debugging
+  
+      // Check if the required role matches the decoded role
       if (requiredRole && requiredRole !== decoded.role) {
         return callback(null, { message: 'Access denied. Insufficient role.' });
       }
   
+      // Return user information if token is valid
       callback(null, { userId: decoded.id, role: decoded.role });
-    } catch (error) {
-      if (error instanceof TokenExpiredError) {
-        console.log('Token expired:', error);
-        callback(null, { message: 'Token expired, please login again.' });
-      } else if (error instanceof JsonWebTokenError) {
-        console.log('Invalid token:', error);
-        callback(null, { message: 'Invalid token' });
-      } else {
-        console.log('Unexpected error in authentication:', error);
-        callback(error, { message: 'Something went wrong in authentication' });
-      }
-    }
+    } catch (e: any) {
+      console.error("JWT verification error:", e.message);
+      callback(e, { message: "Something went wrong in authentication" });
+  }
   };
+  
   
   refreshToken = async (call: { request: { token: string } }, callback: (error: any, result?: RefreshTokenResponse) => void): Promise<void> => {
     try {
-      console.log('Refreshing token');
-      const refreshToken = call.request.token;
-      const refreshSecret = process.env.REFRESH_TOKEN as Secret;
-      const accessSecret = process.env.ACCESS_TOKEN as Secret;
+        console.log('Refreshing token');
+        const refreshToken = call.request.token;
+        const refreshSecret = process.env.REFRESH_TOKEN as Secret;
+        const accessSecret = process.env.ACCESS_TOKEN as Secret;
 
-      if (!refreshSecret || !accessSecret) {
-        throw new Error('Token secrets are not set in environment variables');
-      }
+        if (!refreshSecret || !accessSecret) {
+            throw new Error('Token secrets are not set in environment variables');
+        }
 
-      const decoded = jwt.verify(refreshToken, refreshSecret) as AuthTokenPayload;
+        // Verify the refresh token
+        const decoded = jwt.verify(refreshToken, refreshSecret) as AuthTokenPayload;
+        console.log('Decoded refresh token:', decoded);
 
-      const newRefreshToken = jwt.sign(
-        { id: decoded.id, role: decoded.role, type: 'refresh' },
-        refreshSecret,
-        { expiresIn: '7d' }
-      );
-      const newAccessToken = jwt.sign(
-        { id: decoded.id, role: decoded.role, type: 'access' },
-        accessSecret,
-        { expiresIn: '15m' }
-      );
+        // Check if the user has permission to refresh the token (optional check)
+        if (decoded.role !== 'user') {  // Example of a permission check
+            return callback(null, { message: 'User is not authorized to refresh the token.' });
+        }
 
-      callback(null, { access_token: newAccessToken, refresh_token: newRefreshToken });
-    } catch (error) {
-      if (error instanceof TokenExpiredError) {
-        console.log('Refresh token expired:', error);
-        callback(null, { message: 'Refresh token expired, please re-authenticate.' });
-      } else if (error instanceof JsonWebTokenError) {
-        console.log('Invalid refresh token:', error);
-        callback(null, { message: 'Invalid refresh token' });
-      } else {
-        console.log('Unexpected error in token refresh:', error);
-        callback(error, { message: 'Something went wrong in token refresh' });
-      }
-    }
-  };
-}
+        console.log("token refreshed ");
+        const refresh_token = jwt.sign({id: decoded.id, role: decoded.role}, process.env.REFRESH_TOKEN || 'Rezin' as Secret, {
+            expiresIn: "7d"
+        })
+        const access_token = jwt.sign({id: decoded.id, role: decoded.role}, process.env.ACCESS_TOKEN ||"Rezin"as Secret, {
+            expiresIn: "15m"
+        })
+        const response = {access_token, refresh_token}
+        callback(null, response)
+    } catch(e:any){
+      console.log(e);  
+      callback(e, {message:"something gone wrong in authentication "})
+  }
+};
+
+}  
